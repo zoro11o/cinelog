@@ -273,7 +273,7 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
             <div>
               {seasons.length === 0 && <p style={{ color: '#6e7681', fontSize: 14 }}>Loading seasons…</p>}
               <p style={{ fontSize: 12, color: '#6e7681', marginBottom: 12 }}>
-                Click a season to set your episode count up to the end of that season.
+                Click any season row to instantly set your episode count to the end of that season.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {seasons.map((s, idx) => {
@@ -313,8 +313,8 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
                           </p>
                         )}
                       </div>
-                      <div style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                        Set {cumulativeEps} eps
+                      <div style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', flexShrink: 0, whiteSpace: 'nowrap', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, padding: '4px 10px', fontWeight: 600 }}>
+                        ✓ {cumulativeEps} eps
                       </div>
                     </div>
                   )

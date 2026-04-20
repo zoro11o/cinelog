@@ -69,7 +69,9 @@ export default function App() {
           targetUser={viewingUser} currentUserId={user.id}
           onBack={() => setPage(prevPage)}
           onViewProfile={u => handleViewProfile(u, 'public-profile')}
-          currentUserFavProps={favProps}
+          currentUserEntries={entries}
+          upsertEntry={upsertEntry}
+          removeEntry={removeEntry}
         />
       )}
     </>
