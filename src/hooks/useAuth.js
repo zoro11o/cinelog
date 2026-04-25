@@ -21,22 +21,25 @@ export function useAuth() {
   }, [])
 
   async function signUp(email, password, username) {
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error) throw error
-    if (data.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: data.user.id,
-          username: username.trim(),
-          bio: '',
-          avatar_url: '',
-        })
-      if (profileError) throw profileError
-    }
-    return data
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { display_name: username.trim() } }  // ← add this
+  })
+  if (error) throw error
+  if (data.user) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: data.user.id,
+        username: username.trim(),
+        bio: '',
+        avatar_url: '',
+      })
+    if (profileError) throw profileError
   }
-
+  return data
+}
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
