@@ -48,7 +48,6 @@ async function tmdb(path, params = {}) {
   throw new Error('Set VITE_TMDB_API_KEY or VITE_PROXY_URL in .env')
 }
 
-// Returns { results, totalPages } so SearchPage knows if more pages exist
 export async function searchMulti(query, filters = {}, page = 1) {
   if (!query.trim()) return { results: [], totalPages: 0 }
 
@@ -74,6 +73,16 @@ export async function searchMulti(query, filters = {}, page = 1) {
   return { results: combined, totalPages }
 }
 
+// Search for people (cast, directors, crew)
+export async function searchPerson(query, page = 1) {
+  if (!query.trim()) return { results: [], totalPages: 0 }
+  const data = await tmdb('/search/person', { query, include_adult: false, page })
+  return {
+    results:    (data.results || []).map(r => ({ ...r, media_type: 'person' })),
+    totalPages: data.total_pages || 1,
+  }
+}
+
 export async function discoverMovies(filters = {}, page = 1) {
   const data = await tmdb('/discover/movie', { include_adult: false, page, ...filters })
   return { results: (data.results || []).map(r => ({ ...r, media_type: 'movie' })), totalPages: data.total_pages || 1 }
@@ -82,6 +91,16 @@ export async function discoverMovies(filters = {}, page = 1) {
 export async function discoverTV(filters = {}, page = 1) {
   const data = await tmdb('/discover/tv', { include_adult: false, page, ...filters })
   return { results: (data.results || []).map(r => ({ ...r, media_type: 'tv' })), totalPages: data.total_pages || 1 }
+}
+
+// Trending titles — timeWindow: 'day' | 'week'
+export async function getTrending(type = 'all', timeWindow = 'week', page = 1) {
+  const data = await tmdb(`/trending/${type}/${timeWindow}`, { page })
+  const results = (data.results || []).map(r => ({
+    ...r,
+    media_type: r.media_type || (type === 'movie' ? 'movie' : type === 'tv' ? 'tv' : r.media_type),
+  })).filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+  return { results, totalPages: data.total_pages || 1 }
 }
 
 export async function getMovieGenres() {
@@ -94,11 +113,9 @@ export async function getTVGenres() {
   return data.genres || []
 }
 
-// Get full details — for TV shows fetches episode runtime from most recent season
 export async function getDetails(id, type) {
   const data = await tmdb(`/${type}/${id}`)
   if (type === 'tv' && data) {
-    // episode_run_time is unreliable — fetch actual runtime from last aired season
     const lastSeason = data.last_episode_to_air?.season_number
     if (lastSeason && lastSeason > 0) {
       try {
@@ -114,18 +131,15 @@ export async function getDetails(id, type) {
   return data
 }
 
-// Get cast and crew for a title
 export async function getCredits(id, type) {
   return tmdb(`/${type}/${id}/credits`)
 }
 
-// Get all seasons for a TV show
 export async function getSeasons(showId) {
   const show = await tmdb(`/tv/${showId}`)
   return (show.seasons || []).filter(s => s.season_number > 0)
 }
 
-// Get franchise/collection connections for a title
 export async function getRelated(id, type) {
   if (type === 'movie') {
     try {
@@ -139,7 +153,7 @@ export async function getRelated(id, type) {
         return { parts, collectionName: collection.name, collectionId: details.belongs_to_collection.id }
       }
       return { parts: [], collectionName: null, collectionId: null }
-    } catch (e) {
+    } catch {
       return { parts: [], collectionName: null, collectionId: null }
     }
   } else {
@@ -147,7 +161,6 @@ export async function getRelated(id, type) {
   }
 }
 
-// Fetch a full TMDB collection by ID
 export async function getCollection(collectionId) {
   try {
     const data = await tmdb(`/collection/${collectionId}`)
@@ -160,4 +173,81 @@ export async function getCollection(collectionId) {
       poster_path:   data.poster_path   || '',
     }
   } catch { return null }
+}
+
+function sortByDate(arr) {
+  return [...arr].sort((a, b) => {
+    const dateA = a.release_date || a.first_air_date || ''
+    const dateB = b.release_date || b.first_air_date || ''
+    return dateB.localeCompare(dateA)
+  })
+}
+
+export async function getPersonCredits(personId) {
+  const [person, credits] = await Promise.all([
+    tmdb(`/person/${personId}`),
+    tmdb(`/person/${personId}/combined_credits`),
+  ])
+
+  const primaryDept = person?.known_for_department || 'Acting'
+
+  const castCredits = sortByDate(
+    (credits?.cast || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+  )
+
+  const crewByDept = {}
+  for (const r of (credits?.crew || [])) {
+    if (r.media_type !== 'movie' && r.media_type !== 'tv') continue
+    const dept = r.department || 'Crew'
+    if (!crewByDept[dept]) crewByDept[dept] = []
+    if (!crewByDept[dept].find(x => x.id === r.id && x.media_type === r.media_type)) {
+      crewByDept[dept].push(r)
+    }
+  }
+  for (const dept of Object.keys(crewByDept)) {
+    crewByDept[dept] = sortByDate(crewByDept[dept])
+  }
+
+  const departments = {}
+  if (castCredits.length) departments['Acting'] = castCredits
+  for (const [dept, items] of Object.entries(crewByDept)) {
+    if (items.length) departments[dept] = items
+  }
+
+  const seen = new Set()
+  const knownFor = [
+    ...(crewByDept[primaryDept] || []),
+    ...castCredits,
+    ...Object.values(crewByDept).flat(),
+  ]
+    .filter(r => { const k = `${r.id}-${r.media_type}`; if (seen.has(k)) return false; seen.add(k); return true })
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+    .slice(0, 8)
+
+  return { person, departments, knownFor, primaryDept }
+}
+
+export async function getMedia(id, type) {
+  const [imagesData, videosData] = await Promise.all([
+    tmdb(`/${type}/${id}/images`),
+    tmdb(`/${type}/${id}/videos`),
+  ])
+
+  const backdrops = (imagesData?.backdrops || [])
+    .sort((a, b) => b.vote_average - a.vote_average)
+    .slice(0, 20)
+
+  const posters = (imagesData?.posters || [])
+    .filter(p => p.iso_639_1 === 'en' || p.iso_639_1 === null)
+    .sort((a, b) => b.vote_average - a.vote_average)
+    .slice(0, 12)
+
+  const videos = (videosData?.results || [])
+    .filter(v => v.site === 'YouTube')
+    .sort((a, b) => {
+      const order = ['Trailer', 'Teaser', 'Clip', 'Featurette', 'Behind the Scenes']
+      return order.indexOf(a.type) - order.indexOf(b.type)
+    })
+
+  return { backdrops, posters, videos }
 }

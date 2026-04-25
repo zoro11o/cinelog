@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react'
 import { discoverMovies, discoverTV, TMDB_IMAGE_BASE, getCollection } from '../lib/tmdb'
 import AddToListModal from '../components/modals/AddToListModal'
-import HeartButton    from '../components/ui/HeartButton'
-import { STATUS_COLORS, STATUS_LABELS } from '../lib/constants'
+import MiniCard       from '../components/ui/MiniCard'
 
 // Shuffle array using Fisher-Yates
 function shuffle(arr) {
@@ -32,7 +31,7 @@ const FEATURED_COLLECTIONS = [
   { id: 748,    name: 'The Godfather' },
 ]
 
-function PosterRow({ title, items, badge, onClickItem, entries, isFavorite, toggleFavorite }) {
+function PosterRow({ title, items, badge, onClickItem, entries, isFavorite, toggleFavorite, userId, upsertEntry, removeEntry }) {
   if (!items.length) return null
   return (
     <div style={{ marginBottom: 44 }}>
@@ -50,41 +49,20 @@ function PosterRow({ title, items, badge, onClickItem, entries, isFavorite, togg
           const existing   = entries?.find(e => String(e.tmdb_id) === String(item.id) && e.media_type === mediaType)
           const isFav      = isFavorite?.(item.id, mediaType)
           return (
-            <div key={item.id}
-              style={{ flexShrink: 0, width: 130, position: 'relative' }}
-              onMouseEnter={e => e.currentTarget.querySelector('.poster-img')?.style && (e.currentTarget.querySelector('.poster-img').style.opacity = '0.85')}
-              onMouseLeave={e => e.currentTarget.querySelector('.poster-img')?.style && (e.currentTarget.querySelector('.poster-img').style.opacity = '1')}
-            >
-              <div className="poster-img" style={{ position: 'relative', marginBottom: 8, cursor: 'pointer' }}
-                onClick={() => onClickItem?.({ ...item, media_type: mediaType })}>
-                {item.poster_path
-                  ? <img src={`${TMDB_IMAGE_BASE}${item.poster_path}`} alt={t}
-                      style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', borderRadius: 10, display: 'block' }} />
-                  : <div style={{ width: '100%', aspectRatio: '2/3', background: '#161b22', borderRadius: 10 }} />
-                }
-                {item.vote_average > 0 && (
-                  <div style={{ position: 'absolute', top: 6, left: 6, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 6px', fontSize: 11, fontWeight: 600, color: '#f59e0b' }}>
-                    ★ {item.vote_average.toFixed(1)}
-                  </div>
-                )}
-                {existing && (
-                  <div style={{ position: 'absolute', top: 6, right: 30, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 600, color: '#fff' }}>
-                    {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
-                  </div>
-                )}
-                {isUpcoming && date && (
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.85)', borderRadius: '0 0 10px 10px', padding: '5px 8px', fontSize: 10, color: '#c9a84c', textAlign: 'center', fontWeight: 600 }}>
-                    {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </div>
-                )}
-                {/* Heart button */}
-                {toggleFavorite && (
-                  <div style={{ position: 'absolute', top: 6, right: 6 }}>
-                    <HeartButton isFav={isFav} onToggle={() => toggleFavorite({ ...item, media_type: mediaType })} size={24} />
-                  </div>
-                )}
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 500, color: '#e6edf3', lineHeight: 1.3, marginBottom: 2, cursor: 'pointer' }}
+            <div key={item.id} style={{ flexShrink: 0, width: 130 }}>
+              <MiniCard
+                item={{ ...item, media_type: mediaType }}
+                userId={userId}
+                existingEntry={existing}
+                upsertEntry={upsertEntry}
+                removeEntry={removeEntry}
+              />
+              {isUpcoming && date && (
+                <div style={{ fontSize: 10, color: '#c9a84c', textAlign: 'center', marginTop: 2, fontWeight: 600 }}>
+                  {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </div>
+              )}
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#e6edf3', lineHeight: 1.3, marginTop: 4, cursor: 'pointer' }}
                 onClick={() => onClickItem?.({ ...item, media_type: mediaType })}>
                 {t?.length > 22 ? t.slice(0, 20) + '…' : t}
               </div>
@@ -258,12 +236,12 @@ export default function HomePage({ onNav, userId, entries, upsertEntry, removeEn
       <div style={{ height: 1, background: '#21262d', marginBottom: 44 }} />
 
       {/* Scrollable rows */}
-      <PosterRow title="Popular Picks" badge="Refreshes every visit" items={popularPicks} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
-      <PosterRow title="New Movie Releases" items={newMovies} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
-      <PosterRow title="New TV Shows" items={newTV} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
-      <PosterRow title="Top Rated All Time" items={topRated} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
-      <PosterRow title="Upcoming Movies" items={upcomingMovies} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
-      <CollectionRow onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+      <PosterRow title="Popular Picks" badge="Refreshes every visit" items={popularPicks} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
+      <PosterRow title="New Movie Releases" items={newMovies} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
+      <PosterRow title="New TV Shows" items={newTV} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
+      <PosterRow title="Top Rated All Time" items={topRated} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
+      <PosterRow title="Upcoming Movies" items={upcomingMovies} onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
+      <CollectionRow onClickItem={setSelected} entries={entries} isFavorite={isFavorite} toggleFavorite={toggleFavorite} userId={userId} upsertEntry={upsertEntry} removeEntry={removeEntry} />
 
       <div style={{ height: 48 }} />
 

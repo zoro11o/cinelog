@@ -298,8 +298,9 @@ export default function ProfileContent({
   const totalEp       = tvEntries.reduce((s, e) => s + (e.episodes_watched || 0), 0)
   const scored        = entries.filter(e => e.score)
   const meanScore     = scored.length ? (scored.reduce((s, e) => s + e.score, 0) / scored.length).toFixed(1) : '—'
-  const movieMinutes  = movieEntries.filter(e => e.status === 'completed').reduce((s, e) => s + (e.runtime || 90), 0)
-  const tvMinutes     = tvEntries.reduce((s, e) => s + (e.episodes_watched || 0) * (e.runtime || 24), 0)
+  // Multiply by (rewatch_count + 1) so rewatches count toward total time
+  const movieMinutes  = movieEntries.filter(e => e.status === 'completed').reduce((s, e) => s + (e.runtime || 90) * ((e.rewatch_count || 0) + 1), 0)
+  const tvMinutes     = tvEntries.reduce((s, e) => s + (e.episodes_watched || 0) * (e.runtime || 24) * ((e.rewatch_count || 0) + 1), 0)
   const statusCounts  = Object.keys(STATUS_LABELS).map(k => ({ k, count: entries.filter(e => e.status === k).length }))
   const maxCount      = Math.max(...statusCounts.map(s => s.count), 1)
   const recent        = [...entries].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 12)
@@ -380,7 +381,7 @@ export default function ProfileContent({
               </button>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                  Member since {new Date(profile?.created_at || Date.now()).getFullYear()}
+                  Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown'}
                 </span>
                 {isOwner ? (
                   <button onClick={() => setEditing(true)} style={{ padding: '6px 14px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', cursor: 'pointer' }}>
@@ -472,7 +473,14 @@ export default function ProfileContent({
             reorderFavorites={isOwner ? reorderFavorites : () => {}}
             userId={profileUserId}
             currentUserId={isOwner ? profileUserId : currentUserId}
-            onItemClick={item => isOwner && setSelectedItem({ ...item, tmdb_id: item.tmdb_id || item.id })}
+            onItemClick={item => {
+              if (!isOwner) return
+              // Look up the real list entry so score/episodes/status pre-fill correctly
+              const realEntry = entries.find(
+                e => String(e.tmdb_id) === String(item.tmdb_id || item.id) && e.media_type === item.media_type
+              )
+              setSelectedItem(realEntry || { ...item, tmdb_id: item.tmdb_id || item.id })
+            }}
           />
         </div>
       )}
@@ -516,15 +524,23 @@ export default function ProfileContent({
           onClose={() => setShowModal(null)}
           onViewProfile={user => { setShowModal(null); onViewProfile?.(user) }} />
       )}
-      {selectedItem && isOwner && (
-        <AddToListModal
-          item={{ ...selectedItem, tmdb_id: selectedItem.tmdb_id, id: selectedItem.tmdb_id }}
-          userId={profileUserId} existingEntry={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onSave={async payload => { await upsertEntry(payload); setSelectedItem(null) }}
-          onRemove={async id => { await removeEntry(id); setSelectedItem(null) }}
-        />
-      )}
+      {selectedItem && isOwner && (() => {
+        // Always look up the freshest entry data from entries array
+        const freshEntry = entries.find(
+          e => String(e.tmdb_id) === String(selectedItem.tmdb_id || selectedItem.id) && e.media_type === selectedItem.media_type
+        )
+        const entryToUse = freshEntry || (selectedItem.status ? selectedItem : null)
+        return (
+          <AddToListModal
+            item={{ ...selectedItem, tmdb_id: selectedItem.tmdb_id || selectedItem.id, id: selectedItem.tmdb_id || selectedItem.id }}
+            userId={profileUserId}
+            existingEntry={entryToUse}
+            onClose={() => setSelectedItem(null)}
+            onSave={async payload => { await upsertEntry(payload); setSelectedItem(null) }}
+            onRemove={async id => { await removeEntry(id); setSelectedItem(null) }}
+          />
+        )
+      })()}
     </div>
   )
 }
