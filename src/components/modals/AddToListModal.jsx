@@ -1,12 +1,11 @@
 // ─── AddToListModal ────────────────────────────────────────
-// Full detail modal — shows description, cast, seasons,
-// related titles, media (videos/backdrops/posters), and accurate episode runtime.
 
 import { useState, useEffect } from 'react'
-import { getDetails, getCredits, getSeasons, getRelated, getMedia, TMDB_IMAGE_BASE, TMDB_IMAGE_LARGE } from '../../lib/tmdb'
+import { getDetails, getCredits, getSeasons, getRelated, getMedia, TMDB_IMAGE_BASE } from '../../lib/tmdb'
 import { submitRating } from '../../hooks/useCommunityRatings'
 import { STATUS_LABELS, STATUS_COLORS } from '../../lib/constants'
 import ScoreSelector from '../ui/ScoreSelector'
+import HeartButton from '../ui/HeartButton'
 
 const inputStyle = { padding: '10px 14px', background: '#0d1117', border: '1px solid #21262d', borderRadius: 8, color: '#e6edf3', fontSize: 14, outline: 'none' }
 const labelStyle = { fontSize: 11, color: '#6e7681', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, display: 'block' }
@@ -32,26 +31,27 @@ function getPosterUrl(path) {
   return `${TMDB_IMAGE_BASE}${path}`
 }
 
-export default function AddToListModal({ item, userId, existingEntry, onClose, onSave, onRemove }) {
-  const [status,       setStatus]       = useState(existingEntry?.status || 'plan_to_watch')
-  const [score,        setScore]        = useState(existingEntry?.score || null)
-  const [epWatched,    setEpWatched]    = useState(existingEntry?.episodes_watched || 0)
-  const [rewatchCount, setRewatchCount] = useState(existingEntry?.rewatch_count || 0)
-  const [details,      setDetails]      = useState(null)
-  const [credits,      setCredits]      = useState(null)
-  const [seasons,      setSeasons]      = useState([])
-  const [related,           setRelated]           = useState([])
+export default function AddToListModal({ item, userId, existingEntry, onClose, onSave, onRemove, isFavorite, toggleFavorite }) {
+  const [status,        setStatus]        = useState(existingEntry?.status || 'plan_to_watch')
+  const [score,         setScore]         = useState(existingEntry?.score || null)
+  const [epWatched,     setEpWatched]     = useState(existingEntry?.episodes_watched || 0)
+  const [rewatchCount,  setRewatchCount]  = useState(existingEntry?.rewatch_count || 0)
+  const [details,       setDetails]       = useState(null)
+  const [credits,       setCredits]       = useState(null)
+  const [seasons,       setSeasons]       = useState([])
+  const [related,       setRelated]       = useState([])
   const [relatedCollection, setRelatedCollection] = useState(null)
-  const [media,        setMedia]        = useState(null)
-  const [mediaLoading, setMediaLoading] = useState(false)
+  const [media,         setMedia]         = useState(null)
+  const [mediaLoading,  setMediaLoading]  = useState(false)
   const [activeMediaTab, setActiveMediaTab] = useState('videos')
-  const [saving,       setSaving]       = useState(false)
-  const [tab,          setTab]          = useState('info') // info | cast | seasons | media | related
+  const [saving,        setSaving]        = useState(false)
+  const [tab,           setTab]           = useState('info')
 
   const type   = item.media_type || 'movie'
   const title  = item.title || item.name
   const tmdbId = item.tmdb_id || item.id
   const poster = item.poster_path || existingEntry?.poster_path || null
+  const isFav  = isFavorite?.(tmdbId, type) || false
 
   useEffect(() => {
     getDetails(tmdbId, type).then(setDetails).catch(() => {})
@@ -63,7 +63,6 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
     if (type === 'tv') getSeasons(tmdbId).then(setSeasons).catch(() => {})
   }, [tmdbId, type])
 
-  // Lazy-load media only when that tab is opened
   function handleTabChange(newTab) {
     setTab(newTab)
     if (newTab === 'media' && !media && !mediaLoading) {
@@ -74,13 +73,12 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
     }
   }
 
-  const runtime = type === 'movie'
+  const runtime     = type === 'movie'
     ? (details?.runtime || 90)
     : (details?._accurate_runtime || details?.episode_run_time?.[0] || details?.episode_run_time || 24)
-
-  const totalEp    = details?.number_of_episodes || existingEntry?.total_episodes || 0
-  const genres     = details?.genres?.map(g => g.name) || []
-  const country    = type === 'movie'
+  const totalEp     = details?.number_of_episodes || existingEntry?.total_episodes || 0
+  const genres      = details?.genres?.map(g => g.name) || []
+  const country     = type === 'movie'
     ? (details?.production_countries?.[0]?.iso_3166_1 || '')
     : (details?.origin_country?.[0] || '')
   const language    = details?.original_language || ''
@@ -151,12 +149,19 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
           )}
           {!posterUrl && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #1a2332, #0d1117)' }} />}
 
+          {/* Heart button — top right of hero */}
+          {toggleFavorite && (
+            <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }} onClick={e => e.stopPropagation()}>
+              <HeartButton isFav={isFav} onToggle={() => toggleFavorite({ ...item, id: tmdbId, media_type: type, title, poster_path: poster })} size={28} />
+            </div>
+          )}
+
           <div style={{ position: 'relative', display: 'flex', gap: 16, padding: 20 }}>
             {posterUrl
               ? <img src={posterUrl} alt={title} style={{ width: 90, borderRadius: 8, objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }} />
               : <div style={{ width: 90, minHeight: 130, borderRadius: 8, background: '#21262d', flexShrink: 0 }} />
             }
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, paddingRight: toggleFavorite ? 32 : 0 }}>
               <h3 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 6, lineHeight: 1.3, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{title}</h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
                 <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.15)', color: '#fff', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>
@@ -197,7 +202,7 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
               padding: '10px 16px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
               color: tab === t.id ? '#22c55e' : '#6e7681',
               borderBottom: tab === t.id ? '2px solid #22c55e' : '2px solid transparent',
-              background: 'transparent', marginBottom: -1,
+              background: 'transparent', border: 'none', marginBottom: -1,
             }}>{t.label}</button>
           ))}
         </div>
@@ -208,9 +213,7 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
           {/* INFO TAB */}
           {tab === 'info' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {overview && (
-                <p style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.7 }}>{overview}</p>
-              )}
+              {overview && <p style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.7 }}>{overview}</p>}
 
               <div>
                 <label style={labelStyle}>Status</label>
@@ -232,29 +235,19 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
                 <ScoreSelector score={score} onChange={setScore} />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Rewatched</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button onClick={() => setRewatchCount(c => Math.max(0, c - 1))}
-                      style={{ width: 32, height: 32, borderRadius: 6, background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      −
-                    </button>
-                    <div style={{ minWidth: 80, textAlign: 'center' }}>
-                      <span style={{ fontSize: 20, fontWeight: 600, color: rewatchCount > 0 ? '#22c55e' : '#6e7681' }}>{rewatchCount}</span>
-                      <span style={{ fontSize: 12, color: '#6e7681', marginLeft: 4 }}>{rewatchCount === 1 ? 'time' : 'times'}</span>
-                    </div>
-                    <button onClick={() => setRewatchCount(c => c + 1)}
-                      style={{ width: 32, height: 32, borderRadius: 6, background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      +
-                    </button>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Rewatched</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button onClick={() => setRewatchCount(c => Math.max(0, c - 1))}
+                    style={{ width: 32, height: 32, borderRadius: 6, background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                  <div style={{ minWidth: 80, textAlign: 'center' }}>
+                    <span style={{ fontSize: 20, fontWeight: 600, color: rewatchCount > 0 ? '#22c55e' : '#6e7681' }}>{rewatchCount}</span>
+                    <span style={{ fontSize: 12, color: '#6e7681', marginLeft: 4 }}>{rewatchCount === 1 ? 'time' : 'times'}</span>
                   </div>
-                  {rewatchCount > 0 && (
-                    <p style={{ fontSize: 11, color: '#6e7681', marginTop: 5 }}>
-                      Time counted ×{rewatchCount + 1} in your stats
-                    </p>
-                  )}
+                  <button onClick={() => setRewatchCount(c => c + 1)}
+                    style={{ width: 32, height: 32, borderRadius: 6, background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                 </div>
+                {rewatchCount > 0 && <p style={{ fontSize: 11, color: '#6e7681', marginTop: 5 }}>Time counted ×{rewatchCount + 1} in your stats</p>}
               </div>
 
               {type === 'tv' && (
@@ -271,15 +264,15 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
               )}
 
               <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: 11, borderRadius: 8, background: '#22c55e', color: '#0d1117', fontWeight: 600, fontSize: 14, opacity: saving ? 0.7 : 1 }}>
+                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: 11, borderRadius: 8, background: '#22c55e', color: '#0d1117', fontWeight: 600, fontSize: 14, opacity: saving ? 0.7 : 1, border: 'none', cursor: saving ? 'default' : 'pointer' }}>
                   {saving ? 'Saving…' : existingEntry ? 'Update' : 'Add to List'}
                 </button>
                 {existingEntry && (
-                  <button onClick={handleRemove} disabled={saving} style={{ padding: '11px 16px', borderRadius: 8, border: '1px solid #ef444455', color: '#f87171', fontSize: 14 }}>
+                  <button onClick={handleRemove} disabled={saving} style={{ padding: '11px 16px', borderRadius: 8, border: '1px solid #ef444455', color: '#f87171', fontSize: 14, background: 'transparent', cursor: 'pointer' }}>
                     Remove
                   </button>
                 )}
-                <button onClick={onClose} style={{ padding: '11px 16px', borderRadius: 8, border: '1px solid #21262d', color: '#6e7681', fontSize: 14 }}>
+                <button onClick={onClose} style={{ padding: '11px 16px', borderRadius: 8, border: '1px solid #21262d', color: '#6e7681', fontSize: 14, background: 'transparent', cursor: 'pointer' }}>
                   Cancel
                 </button>
               </div>
@@ -288,57 +281,36 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
 
           {/* CAST TAB */}
           {tab === 'cast' && (() => {
-            const PROMO_KEYWORDS = ['himself', 'herself', 'themselves', 'self', 'host', 'narrator', 'archive', 'interview', 'guest', 'special appearance']
-            const isPromo = (c) => {
-              const ch = (c.character || '').toLowerCase()
-              return PROMO_KEYWORDS.some(k => ch.includes(k)) || ch === ''
-            }
+            const PROMO_KEYWORDS = ['himself', 'herself', 'themselves', ' self', 'host', 'archive footage', 'interview', 'special appearance', 'presenter']
+            const isPromo = c => { const ch = (c.character || '').toLowerCase(); return PROMO_KEYWORDS.some(k => ch.includes(k)) }
             const mainCast  = cast.filter(c => !isPromo(c))
             const promoCast = cast.filter(c => isPromo(c))
-
             const CastRow = ({ person }) => (
-              <div key={person.id}
-                onClick={() => { onClose(); setTimeout(() => window._watchvault_open_person?.(person.id), 100) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '6px 8px', borderRadius: 8, transition: 'background 0.1s' }}
+              <div onClick={() => { onClose(); setTimeout(() => window._watchvault_open_person?.(person.id), 100) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '6px 8px', borderRadius: 8 }}
                 onMouseEnter={e => e.currentTarget.style.background = '#21262d'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 {person.profile_path
-                  ? <img src={`${TMDB_IMAGE_BASE}${person.profile_path}`} alt={person.name}
-                      style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                  : <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#21262d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: '#6e7681' }}>
-                      {person.name[0]}
-                    </div>
+                  ? <img src={`${TMDB_IMAGE_BASE}${person.profile_path}`} alt={person.name} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                  : <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#21262d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: '#6e7681' }}>{person.name[0]}</div>
                 }
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 500, color: '#e6edf3' }}>{person.name}</div>
-                  <div style={{ fontSize: 12, color: '#6e7681', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {person.character || 'Appearance'}
-                  </div>
+                  <div style={{ fontSize: 12, color: '#6e7681', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{person.character || 'Appearance'}</div>
                 </div>
                 <div style={{ fontSize: 11, color: '#22c55e', flexShrink: 0 }}>View →</div>
               </div>
             )
-
             return (
               <div>
                 {!credits && <p style={{ color: '#6e7681', fontSize: 14 }}>Loading cast…</p>}
                 {credits && cast.length === 0 && <p style={{ color: '#6e7681', fontSize: 14 }}>No cast info available.</p>}
-
-                {mainCast.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
-                    {mainCast.map(p => <CastRow key={p.id} person={p} />)}
-                  </div>
-                )}
-
+                {mainCast.length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>{mainCast.map(p => <CastRow key={p.id} person={p} />)}</div>}
                 {promoCast.length > 0 && (
                   <details style={{ marginTop: 8 }}>
-                    <summary style={{ fontSize: 12, color: '#6e7681', cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-                      Promos / Interviews / Appearances ({promoCast.length})
-                    </summary>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {promoCast.map(p => <CastRow key={p.id} person={p} />)}
-                    </div>
+                    <summary style={{ fontSize: 12, color: '#6e7681', cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>Promos / Appearances ({promoCast.length})</summary>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{promoCast.map(p => <CastRow key={p.id} person={p} />)}</div>
                   </details>
                 )}
               </div>
@@ -349,45 +321,27 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
           {tab === 'seasons' && type === 'tv' && (
             <div>
               {seasons.length === 0 && <p style={{ color: '#6e7681', fontSize: 14 }}>Loading seasons…</p>}
-              <p style={{ fontSize: 12, color: '#6e7681', marginBottom: 12 }}>
-                Click any season row to instantly set your episode count to the end of that season.
-              </p>
+              <p style={{ fontSize: 12, color: '#6e7681', marginBottom: 12 }}>Click any season to set your episode count to the end of that season.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {seasons.map((s, idx) => {
-                  const cumulativeEps = seasons
-                    .filter(sx => sx.season_number <= s.season_number)
-                    .reduce((sum, sx) => sum + (sx.episode_count || 0), 0)
-                  const isCurrentSeason = epWatched >= (idx > 0
-                    ? seasons.filter(sx => sx.season_number < s.season_number).reduce((sum, sx) => sum + (sx.episode_count || 0), 0)
-                    : 0) && epWatched <= cumulativeEps
+                  const cumulativeEps = seasons.filter(sx => sx.season_number <= s.season_number).reduce((sum, sx) => sum + (sx.episode_count || 0), 0)
+                  const isCurrentSeason = epWatched >= (idx > 0 ? seasons.filter(sx => sx.season_number < s.season_number).reduce((sum, sx) => sum + (sx.episode_count || 0), 0) : 0) && epWatched <= cumulativeEps
                   return (
-                    <div key={s.id}
-                      onClick={() => setEpWatched(cumulativeEps)}
-                      style={{
-                        display: 'flex', gap: 12, background: '#0d1117', borderRadius: 8, padding: 10,
-                        cursor: 'pointer',
-                        border: `1px solid ${isCurrentSeason ? '#22c55e44' : 'transparent'}`,
-                        transition: 'border-color 0.15s',
-                      }}
+                    <div key={s.id} onClick={() => setEpWatched(cumulativeEps)}
+                      style={{ display: 'flex', gap: 12, background: '#0d1117', borderRadius: 8, padding: 10, cursor: 'pointer', border: `1px solid ${isCurrentSeason ? '#22c55e44' : 'transparent'}`, transition: 'border-color 0.15s' }}
                       onMouseEnter={e => e.currentTarget.style.borderColor = '#22c55e44'}
                       onMouseLeave={e => e.currentTarget.style.borderColor = isCurrentSeason ? '#22c55e44' : 'transparent'}
                     >
                       {s.poster_path
-                        ? <img src={`${TMDB_IMAGE_BASE}${s.poster_path}`} alt={s.name}
-                            style={{ width: 48, borderRadius: 6, objectFit: 'cover', flexShrink: 0, alignSelf: 'flex-start' }} />
+                        ? <img src={`${TMDB_IMAGE_BASE}${s.poster_path}`} alt={s.name} style={{ width: 48, borderRadius: 6, objectFit: 'cover', flexShrink: 0, alignSelf: 'flex-start' }} />
                         : <div style={{ width: 48, minHeight: 64, borderRadius: 6, background: '#21262d', flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 500, color: '#e6edf3', marginBottom: 2 }}>{s.name}</div>
                         <div style={{ fontSize: 12, color: '#6e7681', marginBottom: 4 }}>
-                          {s.episode_count} eps{s.air_date ? ` · ${s.air_date.slice(0, 4)}` : ''}
-                          {' · '}<span style={{ color: '#8b949e' }}>cumulative: {cumulativeEps} eps</span>
+                          {s.episode_count} eps{s.air_date ? ` · ${s.air_date.slice(0, 4)}` : ''} · <span style={{ color: '#8b949e' }}>cumulative: {cumulativeEps} eps</span>
                         </div>
-                        {s.overview && (
-                          <p style={{ fontSize: 12, color: '#6e7681', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {s.overview}
-                          </p>
-                        )}
+                        {s.overview && <p style={{ fontSize: 12, color: '#6e7681', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.overview}</p>}
                       </div>
                       <div style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', flexShrink: 0, whiteSpace: 'nowrap', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, padding: '4px 10px', fontWeight: 600 }}>
                         ✓ {cumulativeEps} eps
@@ -402,113 +356,70 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
           {/* MEDIA TAB */}
           {tab === 'media' && (
             <div>
-              {mediaLoading && (
-                <div style={{ textAlign: 'center', padding: '48px 0', color: '#6e7681' }}>
-                  <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.4 }}>⏳</div>
-                  <p style={{ fontSize: 14 }}>Loading media…</p>
-                </div>
-              )}
-
+              {mediaLoading && <div style={{ textAlign: 'center', padding: '48px 0', color: '#6e7681' }}><p>Loading media…</p></div>}
               {!mediaLoading && media && (
                 <>
-                  {/* Sub-tabs */}
                   <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                     {[
-                      { key: 'videos',    label: `Videos`,    count: media.videos.length },
-                      { key: 'backdrops', label: `Backdrops`, count: media.backdrops.length },
-                      { key: 'posters',   label: `Posters`,   count: media.posters.length },
+                      { key: 'videos',    label: 'Videos',    count: media.videos.length },
+                      { key: 'backdrops', label: 'Backdrops', count: media.backdrops.length },
+                      { key: 'posters',   label: 'Posters',   count: media.posters.length },
                     ].map(({ key, label, count }) => (
-                      <button
-                        key={key}
-                        onClick={() => setActiveMediaTab(key)}
-                        style={{
-                          padding: '6px 14px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          borderColor: activeMediaTab === key ? '#22c55e' : '#21262d',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: activeMediaTab === key ? 600 : 400,
-                          background: activeMediaTab === key ? 'rgba(34,197,94,0.12)' : 'transparent',
-                          color: activeMediaTab === key ? '#22c55e' : '#6e7681',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {label}
-                        <span style={{ marginLeft: 5, opacity: 0.7, fontSize: 11 }}>({count})</span>
+                      <button key={key} onClick={() => setActiveMediaTab(key)} style={{
+                        padding: '6px 14px', borderRadius: 20, border: '1px solid',
+                        borderColor: activeMediaTab === key ? '#22c55e' : '#21262d',
+                        cursor: 'pointer', fontSize: 12, fontWeight: activeMediaTab === key ? 600 : 400,
+                        background: activeMediaTab === key ? 'rgba(34,197,94,0.12)' : 'transparent',
+                        color: activeMediaTab === key ? '#22c55e' : '#6e7681',
+                      }}>
+                        {label} <span style={{ opacity: 0.7, fontSize: 11 }}>({count})</span>
                       </button>
                     ))}
                   </div>
 
-                  {/* Videos */}
                   {activeMediaTab === 'videos' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {media.videos.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '40px 0', color: '#6e7681' }}>
-                          <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>🎬</div>
-                          <p style={{ fontSize: 14 }}>No videos available.</p>
-                        </div>
-                      )}
+                      {media.videos.length === 0 && <p style={{ color: '#6e7681', textAlign: 'center', padding: '32px 0' }}>No videos available.</p>}
                       {media.videos.map(v => (
                         <div key={v.key} style={{ borderRadius: 10, overflow: 'hidden', background: '#0d1117', border: '1px solid #21262d' }}>
                           <div style={{ position: 'relative', paddingTop: '56.25%' }}>
-                            <iframe
-                              src={`https://www.youtube.com/embed/${v.key}`}
-                              title={v.name}
-                              allowFullScreen
-                              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                            />
+                            <iframe src={`https://www.youtube.com/embed/${v.key}`} title={v.name} allowFullScreen
+                              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} />
                           </div>
-                          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div>
-                              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#e6edf3' }}>{v.name}</p>
-                              <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6e7681' }}>{v.type}</p>
-                            </div>
+                          <div style={{ padding: '10px 14px' }}>
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#e6edf3' }}>{v.name}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6e7681' }}>{v.type}</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* Backdrops */}
                   {activeMediaTab === 'backdrops' && (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                      {media.backdrops.length === 0 && (
-                        <p style={{ color: '#6e7681', padding: '32px 0', gridColumn: '1/-1', textAlign: 'center', fontSize: 14 }}>No backdrops available.</p>
-                      )}
+                      {media.backdrops.length === 0 && <p style={{ color: '#6e7681', padding: '32px 0', gridColumn: '1/-1', textAlign: 'center' }}>No backdrops available.</p>}
                       {media.backdrops.map((img, i) => (
                         <a key={i} href={`https://image.tmdb.org/t/p/original${img.file_path}`} target="_blank" rel="noreferrer"
-                          style={{ display: 'block', borderRadius: 7, overflow: 'hidden', border: '1px solid #21262d', transition: 'opacity 0.15s' }}
+                          style={{ display: 'block', borderRadius: 7, overflow: 'hidden', border: '1px solid #21262d' }}
                           onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
                           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                         >
-                          <img
-                            src={`https://image.tmdb.org/t/p/w500${img.file_path}`}
-                            alt=""
-                            style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
-                          />
+                          <img src={`https://image.tmdb.org/t/p/w500${img.file_path}`} alt="" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
                         </a>
                       ))}
                     </div>
                   )}
 
-                  {/* Posters */}
                   {activeMediaTab === 'posters' && (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8 }}>
-                      {media.posters.length === 0 && (
-                        <p style={{ color: '#6e7681', padding: '32px 0', gridColumn: '1/-1', textAlign: 'center', fontSize: 14 }}>No posters available.</p>
-                      )}
+                      {media.posters.length === 0 && <p style={{ color: '#6e7681', padding: '32px 0', gridColumn: '1/-1', textAlign: 'center' }}>No posters available.</p>}
                       {media.posters.map((img, i) => (
                         <a key={i} href={`https://image.tmdb.org/t/p/original${img.file_path}`} target="_blank" rel="noreferrer"
-                          style={{ display: 'block', borderRadius: 7, overflow: 'hidden', border: '1px solid #21262d', transition: 'opacity 0.15s' }}
+                          style={{ display: 'block', borderRadius: 7, overflow: 'hidden', border: '1px solid #21262d' }}
                           onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
                           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                         >
-                          <img
-                            src={`https://image.tmdb.org/t/p/w300${img.file_path}`}
-                            alt=""
-                            style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }}
-                          />
+                          <img src={`https://image.tmdb.org/t/p/w300${img.file_path}`} alt="" style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
                         </a>
                       ))}
                     </div>
@@ -531,16 +442,12 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
               )}
               {related.length > 0 && (
                 <>
-                  {relatedCollection && (
-                    <p style={{ fontSize: 13, color: '#22c55e', marginBottom: 14, fontWeight: 500 }}>
-                      Part of: {relatedCollection}
-                    </p>
-                  )}
+                  {relatedCollection && <p style={{ fontSize: 13, color: '#22c55e', marginBottom: 14, fontWeight: 500 }}>Part of: {relatedCollection}</p>}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 12 }}>
                     {related.map(r => {
-                      const t      = r.title || r.name
-                      const yr     = (r.release_date || r.first_air_date || '').slice(0, 4)
-                      const rType  = r.media_type || 'movie'
+                      const t       = r.title || r.name
+                      const yr      = (r.release_date || r.first_air_date || '').slice(0, 4)
+                      const rType   = r.media_type || 'movie'
                       const curDate = details?.release_date || details?.first_air_date || ''
                       const rDate   = r.release_date || r.first_air_date || ''
                       const relation = rDate < curDate ? 'Prequel' : 'Sequel'
@@ -552,13 +459,10 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
                           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                         >
                           {r.poster_path
-                            ? <img src={`${TMDB_IMAGE_BASE}${r.poster_path}`} alt={t}
-                                style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', borderRadius: 7, display: 'block', marginBottom: 6 }} />
+                            ? <img src={`${TMDB_IMAGE_BASE}${r.poster_path}`} alt={t} style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', borderRadius: 7, display: 'block', marginBottom: 6 }} />
                             : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', borderRadius: 7, marginBottom: 6 }} />
                           }
-                          <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3, marginBottom: 2 }}>
-                            {t?.length > 20 ? t.slice(0, 18) + '…' : t}
-                          </div>
+                          <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3, marginBottom: 2 }}>{t?.length > 20 ? t.slice(0, 18) + '…' : t}</div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontSize: 10, color: '#6e7681' }}>{yr}</span>
                             <span style={{ fontSize: 9, color: rDate < curDate ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>{relation}</span>
@@ -571,7 +475,6 @@ export default function AddToListModal({ item, userId, existingEntry, onClose, o
               )}
             </div>
           )}
-
         </div>
       </div>
     </div>

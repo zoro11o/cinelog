@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNotifications } from '../../hooks/useNotifications'
 
 function Avatar({ url, name, size = 32 }) {
   const initials = (name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -13,18 +14,42 @@ function Avatar({ url, name, size = 32 }) {
   )
 }
 
-export default function Navbar({ user, profile, page, onNav, onLogout }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)  return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
 
-  // Close menu when clicking outside
+export default function Navbar({ user, profile, page, onNav, onLogout }) {
+  const [menuOpen, setMenuOpen]   = useState(false)
+  const [bellOpen, setBellOpen]   = useState(false)
+  const menuRef = useRef(null)
+  const bellRef = useRef(null)
+
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications(user?.id)
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClick(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false)
+      if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  // Mark all read when opening bell
+  function handleBellOpen() {
+    setBellOpen(o => {
+      if (!o && unreadCount > 0) markAllRead()
+      return !o
+    })
+    setMenuOpen(false)
+  }
 
   return (
     <nav style={{ background: '#0d1117', borderBottom: '1px solid #21262d', position: 'sticky', top: 0, zIndex: 100, padding: '0 24px' }}>
@@ -49,10 +74,99 @@ export default function Navbar({ user, profile, page, onNav, onLogout }) {
               </button>
             ))}
 
-            {/* Profile avatar dropdown */}
-            <div ref={menuRef} style={{ position: 'relative', marginLeft: 8 }}>
+            {/* ── Bell ── */}
+            <div ref={bellRef} style={{ position: 'relative', marginLeft: 4 }}>
               <button
-                onClick={() => setMenuOpen(o => !o)}
+                onClick={handleBellOpen}
+                style={{
+                  position: 'relative', background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '6px 8px', borderRadius: 8, color: bellOpen ? '#e6edf3' : '#8b949e',
+                  background: bellOpen ? '#21262d' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => { if (!bellOpen) e.currentTarget.style.background = '#161b22' }}
+                onMouseLeave={e => { if (!bellOpen) e.currentTarget.style.background = 'transparent' }}
+              >
+                <span style={{ fontSize: 18 }}>🔔</span>
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: 2, right: 2,
+                    background: '#22c55e', color: '#0d1117',
+                    borderRadius: '50%', minWidth: 16, height: 16,
+                    fontSize: 10, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 3px', border: '2px solid #0d1117',
+                  }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Bell dropdown */}
+              {bellOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+                  background: '#161b22', border: '1px solid #30363d',
+                  borderRadius: 12, width: 320, maxHeight: 420, overflowY: 'auto',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200,
+                }}>
+                  {/* Header */}
+                  <div style={{ padding: '14px 16px', borderBottom: '1px solid #21262d', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3' }}>Notifications</span>
+                    {notifications.length > 0 && (
+                      <button onClick={markAllRead} style={{ fontSize: 11, color: '#22c55e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List */}
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '40px 16px', textAlign: 'center', color: '#6e7681' }}>
+                      <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}>🔔</div>
+                      <p style={{ fontSize: 13 }}>No notifications yet</p>
+                    </div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id}
+                        onClick={() => markRead(n.id)}
+                        style={{
+                          padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'flex-start',
+                          borderBottom: '1px solid #21262d',
+                          background: n.read ? 'transparent' : 'rgba(34,197,94,0.05)',
+                          cursor: 'default', transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#21262d'}
+                        onMouseLeave={e => e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(34,197,94,0.05)'}
+                      >
+                        {/* Icon */}
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                          {n.type === 'follow' ? '👤' : '📢'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 13, color: '#e6edf3', lineHeight: 1.4, margin: 0 }}>
+                            {n.message}
+                          </p>
+                          <p style={{ fontSize: 11, color: '#6e7681', margin: '4px 0 0' }}>
+                            {timeAgo(n.created_at)}
+                          </p>
+                        </div>
+                        {/* Unread dot */}
+                        {!n.read && (
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, marginTop: 4 }} />
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Profile avatar dropdown ── */}
+            <div ref={menuRef} style={{ position: 'relative', marginLeft: 4 }}>
+              <button
+                onClick={() => { setMenuOpen(o => !o); setBellOpen(false) }}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: 2,
                   borderRadius: '50%', display: 'flex', alignItems: 'center',
@@ -62,7 +176,6 @@ export default function Navbar({ user, profile, page, onNav, onLogout }) {
                 <Avatar url={profile?.avatar_url} name={profile?.username || user?.email} size={36} />
               </button>
 
-              {/* Dropdown menu */}
               {menuOpen && (
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 10px)', right: 0,
@@ -85,9 +198,9 @@ export default function Navbar({ user, profile, page, onNav, onLogout }) {
 
                   {/* Menu items */}
                   {[
-                    { label: 'Profile',   icon: '👤', action: () => { onNav('profile'); setMenuOpen(false) } },
-                    { label: 'Settings',  icon: '⚙️', action: () => { onNav('settings'); setMenuOpen(false) }, muted: true },
-                    { label: 'About',     icon: 'ℹ️', action: () => { onNav('about'); setMenuOpen(false) } },
+                    { label: 'Profile',  icon: '👤', action: () => { onNav('profile'); setMenuOpen(false) } },
+                    { label: 'Settings', icon: '⚙️', action: () => { onNav('settings'); setMenuOpen(false) }, muted: true },
+                    { label: 'About',    icon: 'ℹ️', action: () => { onNav('about'); setMenuOpen(false) } },
                   ].map(item => (
                     <button key={item.label} onClick={item.action} style={{
                       width: '100%', padding: '11px 16px', textAlign: 'left',
@@ -105,7 +218,6 @@ export default function Navbar({ user, profile, page, onNav, onLogout }) {
                     </button>
                   ))}
 
-                  {/* Divider + Sign out */}
                   <div style={{ borderTop: '1px solid #21262d' }}>
                     <button onClick={() => { onLogout(); setMenuOpen(false) }} style={{
                       width: '100%', padding: '11px 16px', textAlign: 'left',

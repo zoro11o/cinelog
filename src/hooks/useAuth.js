@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function useAuth() {
-  const [user, setUser] = useState(null)
+  const [user,    setUser]    = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,34 +21,39 @@ export function useAuth() {
   }, [])
 
   async function signUp(email, password, username) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { display_name: username.trim() } }  // ← add this
-  })
-  if (error) throw error
-  if (data.user) {
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: data.user.id,
-        username: username.trim(),
-        bio: '',
-        avatar_url: '',
-      })
-    if (profileError) throw profileError
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: username.trim() } },
+    })
+    if (error) throw error
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({ id: data.user.id, username: username.trim(), bio: '', avatar_url: '' })
+      if (profileError) throw profileError
+    }
+    return data
   }
-  return data
-}
+
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     return data
   }
 
+  // provider: 'discord' | 'google' | 'github'
+  async function signInWithOAuth(provider) {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    })
+    if (error) throw error
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
 
-  return { user, loading, signUp, signIn, signOut }
+  return { user, loading, signUp, signIn, signInWithOAuth, signOut }
 }

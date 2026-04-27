@@ -1,12 +1,11 @@
 // ─── PublicProfilePage ─────────────────────────────────────
-// Identical to own profile but read-only + has a List tab
 
 import { useState, useEffect } from 'react'
 import { supabase }         from '../lib/supabase'
 import LoadingSpinner       from '../components/ui/LoadingSpinner'
 import ProfileContent       from '../components/ProfileContent'
+import AddToListModal       from '../components/modals/AddToListModal'
 import { STATUS_LABELS, STATUS_COLORS } from '../lib/constants'
-import MiniCard             from '../components/ui/MiniCard'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w300'
 
@@ -16,10 +15,11 @@ function getPoster(path) {
   return `${POSTER_BASE}${path}`
 }
 
-function PublicListPage({ entries, currentUserId, upsertEntry, removeEntry, currentUserEntries }) {
+function PublicListPage({ entries, currentUserId, upsertEntry, removeEntry, currentUserEntries, isFavorite, toggleFavorite }) {
   const [filter,     setFilter]     = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [sort,       setSort]       = useState('updated')
+  const [selected,   setSelected]   = useState(null)
 
   const filtered = entries
     .filter(e => filter     === 'all' || e.status     === filter)
@@ -36,6 +36,12 @@ function PublicListPage({ entries, currentUserId, upsertEntry, removeEntry, curr
     if (items.length) acc[k] = items
     return acc
   }, {})
+
+  function getViewerEntry(entry) {
+    return currentUserEntries?.find(
+      ve => String(ve.tmdb_id) === String(entry.tmdb_id) && ve.media_type === entry.media_type
+    )
+  }
 
   return (
     <div style={{ padding: '24px 0' }}>
@@ -77,32 +83,43 @@ function PublicListPage({ entries, currentUserId, upsertEntry, removeEntry, curr
             <span style={{ fontSize: 13, color: '#6e7681' }}>({items.length})</span>
           </div>
 
-          {/* Grid of poster cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
             {items.map(entry => {
-              const viewerEntry = currentUserEntries?.find(
-                ve => String(ve.tmdb_id) === String(entry.tmdb_id) && ve.media_type === entry.media_type
-              )
+              const posterUrl = getPoster(entry.poster_path)
+              const isFav = isFavorite?.(entry.tmdb_id, entry.media_type)
               return (
-                <div key={entry.id}>
-                  <MiniCard
-                    item={entry}
-                    userId={currentUserId}
-                    existingEntry={viewerEntry}
-                    upsertEntry={upsertEntry}
-                    removeEntry={removeEntry}
-                  />
-                  {/* Score badge */}
+                <div key={entry.id}
+                  onClick={() => setSelected(entry)}
+                  style={{ cursor: 'pointer', position: 'relative' }}
+                >
+                  {/* Poster */}
+                  <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', transition: 'opacity 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    {posterUrl
+                      ? <img src={posterUrl} alt={entry.title}
+                          style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
+                      : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#6e7681', padding: 4, textAlign: 'center' }}>
+                          {entry.title}
+                        </div>
+                    }
+                    {/* Status dot */}
+                    <div style={{ position: 'absolute', top: 4, left: 4, width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[status] }} />
+                  </div>
+
+                  {/* Score */}
                   {entry.score && (
                     <div style={{ fontSize: 11, color: '#c9a84c', fontWeight: 600, marginTop: 3, textAlign: 'center' }}>
                       ★ {entry.score}
                     </div>
                   )}
+
                   {/* Episode progress for TV */}
                   {entry.media_type === 'tv' && entry.total_episodes > 0 && (
                     <div style={{ marginTop: 4 }}>
                       <div style={{ height: 2, background: '#21262d', borderRadius: 1 }}>
-                        <div style={{ width: `${(entry.episodes_watched / entry.total_episodes) * 100}%`, height: '100%', background: STATUS_COLORS[status], borderRadius: 1 }} />
+                        <div style={{ width: `${Math.min(100, (entry.episodes_watched / entry.total_episodes) * 100)}%`, height: '100%', background: STATUS_COLORS[status], borderRadius: 1 }} />
                       </div>
                       <div style={{ fontSize: 10, color: '#6e7681', textAlign: 'center', marginTop: 2 }}>
                         {entry.episodes_watched}/{entry.total_episodes}
@@ -115,17 +132,31 @@ function PublicListPage({ entries, currentUserId, upsertEntry, removeEntry, curr
           </div>
         </div>
       ))}
+
+      {/* Modal */}
+      {selected && (
+        <AddToListModal
+          item={{ ...selected, id: selected.tmdb_id }}
+          userId={currentUserId}
+          existingEntry={getViewerEntry(selected)}
+          onClose={() => setSelected(null)}
+          onSave={async payload => { await upsertEntry?.(payload); setSelected(null) }}
+          onRemove={async id => { await removeEntry?.(id); setSelected(null) }}
+          isFavorite={isFavorite}
+          toggleFavorite={toggleFavorite}
+        />
+      )}
     </div>
   )
 }
 
 export default function PublicProfilePage({
   targetUser, currentUserId, onBack, onViewProfile,
-  currentUserEntries, upsertEntry, removeEntry,
+  currentUserEntries, upsertEntry, removeEntry, isFavorite, toggleFavorite,
 }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab,     setTab]     = useState('stats') // 'stats' | 'list'
+  const [tab,     setTab]     = useState('stats')
 
   useEffect(() => {
     supabase
@@ -141,10 +172,10 @@ export default function PublicProfilePage({
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 24px 0' }}>
 
-      {/* Back button */}
-      <button onClick={onBack} style={{ color: '#6e7681', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>← Back</button>
+      <button onClick={onBack} style={{ color: '#6e7681', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
+        ← Back
+      </button>
 
-      {/* Profile header — always shown */}
       <ProfileContent
         profile={targetUser}
         entries={entries}
@@ -158,14 +189,14 @@ export default function PublicProfilePage({
         externalEntries={currentUserEntries}
       />
 
-      {/* Stats / List tabs */}
+      {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #21262d', marginBottom: 24 }}>
         {['stats', 'list'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '12px 24px', fontSize: 14, fontWeight: 500,
             color: tab === t ? '#22c55e' : '#6e7681',
             borderBottom: tab === t ? '2px solid #22c55e' : '2px solid transparent',
-            background: 'transparent', border: 'none', borderBottom: tab === t ? '2px solid #22c55e' : '2px solid transparent',
+            background: 'transparent', border: 'none',
             cursor: 'pointer', marginBottom: -1,
           }}>
             {t === 'stats' ? 'Stats & Charts' : `List (${entries.length})`}
@@ -173,7 +204,6 @@ export default function PublicProfilePage({
         ))}
       </div>
 
-      {/* Stats tab — full ProfileContent without header */}
       {tab === 'stats' && (
         <ProfileContent
           profile={targetUser}
@@ -189,7 +219,6 @@ export default function PublicProfilePage({
         />
       )}
 
-      {/* List tab */}
       {tab === 'list' && (
         <PublicListPage
           entries={entries}
@@ -197,6 +226,8 @@ export default function PublicProfilePage({
           upsertEntry={upsertEntry}
           removeEntry={removeEntry}
           currentUserEntries={currentUserEntries}
+          isFavorite={isFavorite}
+          toggleFavorite={toggleFavorite}
         />
       )}
     </div>

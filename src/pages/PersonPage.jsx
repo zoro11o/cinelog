@@ -6,7 +6,6 @@ import AddToListModal from '../components/modals/AddToListModal'
 import { STATUS_COLORS, STATUS_LABELS } from '../lib/constants'
 import HeartButton from '../components/ui/HeartButton'
 
-// Tab display order — mirrors TMDB
 const DEPT_ORDER = ['Directing', 'Acting', 'Writing', 'Production', 'Creator', 'Camera', 'Visual Effects', 'Crew']
 
 export default function PersonPage({ personId, onBack, userId, entries, upsertEntry, removeEntry, isFavorite, toggleFavorite }) {
@@ -22,7 +21,6 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
     setData(null)
     getPersonCredits(personId).then(d => {
       setData(d)
-      // Default to primary department tab
       setActiveTab(d.primaryDept)
       setLoading(false)
     })
@@ -45,7 +43,6 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
   const knownFor    = data?.knownFor || []
   const primaryDept = data?.primaryDept || 'Acting'
 
-  // Build ordered tab list — primary dept first, then others in DEPT_ORDER, then any remaining
   const deptKeys = Object.keys(departments)
   const orderedTabs = [
     primaryDept,
@@ -54,13 +51,11 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
   ].filter(d => departments[d]?.length > 0)
 
   const displayCredits = departments[activeTab] || []
+  const isActingTab    = activeTab === 'Acting'
 
   function getExisting(item) {
     return entries?.find(e => String(e.tmdb_id) === String(item.id) && e.media_type === item.media_type)
   }
-
-  // For crew tabs show job, for acting show character
-  const isActingTab = activeTab === 'Acting'
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
@@ -121,7 +116,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
                   {item.poster_path
                     ? <img src={`${TMDB_IMAGE_BASE}${item.poster_path}`} alt={title}
                         style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', borderRadius: 8, display: 'block', marginBottom: 6 }} />
-                    : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', borderRadius: 8, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#6e7681', padding: 6, textAlign: 'center' }}>{title}</div>
+                    : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', borderRadius: 8, marginBottom: 6 }} />
                   }
                   <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3 }}>
                     {title?.length > 18 ? title.slice(0, 16) + '…' : title}
@@ -158,9 +153,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
           const yr        = (item.release_date || item.first_air_date || '').slice(0, 4)
           const isFav     = isFavorite?.(item.id, item.media_type)
           const community = communityRatings[String(item.id)]
-          const roleLabel = isActingTab
-            ? (item.character || null)
-            : (item.job || activeTab)
+          const roleLabel = isActingTab ? (item.character || null) : (item.job || activeTab)
 
           return (
             <div key={`${activeTab}-${item.media_type}-${item.id}`}
@@ -169,35 +162,30 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = '#21262d' }}
               onClick={() => setSelected(item)}
             >
-              {/* Poster */}
               {item.poster_path
                 ? <img src={`${TMDB_IMAGE_BASE}${item.poster_path}`} alt={title}
                     style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
                 : <div style={{ width: '100%', aspectRatio: '2/3', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#30363d', fontSize: 11, padding: 8, textAlign: 'center' }}>{title}</div>
               }
 
-              {/* Status badge */}
               {existing && (
                 <div style={{ position: 'absolute', top: 6, left: 6, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>
                   {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
                 </div>
               )}
 
-              {/* TMDB rating */}
               {item.vote_average > 0 && (
                 <div style={{ position: 'absolute', top: existing ? 28 : 6, left: 6, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 600, color: '#f59e0b' }}>
                   ★ {item.vote_average.toFixed(1)}
                 </div>
               )}
 
-              {/* Heart */}
               {toggleFavorite && (
                 <div style={{ position: 'absolute', top: 6, right: 6 }} onClick={e => e.stopPropagation()}>
                   <HeartButton isFav={isFav} onToggle={() => toggleFavorite({ ...item })} size={24} />
                 </div>
               )}
 
-              {/* Info */}
               <div style={{ padding: '7px 10px 10px' }}>
                 <div style={{ fontSize: 12, fontWeight: 500, color: '#e6edf3', lineHeight: 1.3, marginBottom: 3 }}>
                   {title.length > 26 ? title.slice(0, 24) + '…' : title}

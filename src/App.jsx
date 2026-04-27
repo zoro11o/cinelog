@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useAuth }    from './hooks/useAuth'
-import { useEntries } from './hooks/useEntries'
-import { useProfile } from './hooks/useProfile'
+import { useAuth }     from './hooks/useAuth'
+import { useEntries }  from './hooks/useEntries'
+import { useProfile }  from './hooks/useProfile'
 import { useFavorites } from './hooks/useFavorites'
 
 import Navbar            from './components/layout/Navbar'
@@ -13,6 +13,7 @@ import MyListPage        from './pages/MyListPage'
 import ProfilePage       from './pages/ProfilePage'
 import PeoplePage        from './pages/PeoplePage'
 import PublicProfilePage from './pages/PublicProfilePage'
+import AboutPage         from './pages/AboutPage'
 import PersonPage        from './pages/PersonPage'
 
 export default function App() {
@@ -20,13 +21,12 @@ export default function App() {
   const { entries, loading: entriesLoading, upsertEntry, removeEntry } = useEntries(user?.id)
   const { profile, loading: profileLoading, updateProfile } = useProfile(user?.id)
   const { favorites, toggleFavorite, isFavorite, reorderFavorites } = useFavorites(user?.id)
+
   const [page,          setPage]          = useState('home')
   const [viewingUser,   setViewingUser]   = useState(null)
   const [viewingPerson, setViewingPerson] = useState(null)
   const [prevPage,      setPrevPage]      = useState('people')
 
-  // ALL hooks must be called before any conditional returns
-  // Global handler for opening person page from cast clicks inside modals
   const pageRef = useRef(page)
   pageRef.current = page
 
@@ -36,12 +36,13 @@ export default function App() {
       setPrevPage(pageRef.current)
       setPage('person')
     }
-    window._watchvault_open_item = (item) => {
-      // handled in SearchPage but set globally as fallback
-    }
+    window._watchvault_open_item = () => {}
+    window._watchvault_goto_profile = () => setPage('profile')
+
     return () => {
       delete window._watchvault_open_person
       delete window._watchvault_open_item
+      delete window._watchvault_goto_profile
     }
   }, [])
 
@@ -61,19 +62,27 @@ export default function App() {
 
   return (
     <>
-      <Navbar user={user} profile={profile} page={page} onNav={p => { setPage(p); setViewingUser(null) }} onLogout={handleSignOut} />
+      <Navbar
+        user={user}
+        profile={profile}
+        page={page}
+        onNav={p => { setPage(p); setViewingUser(null) }}
+        onLogout={handleSignOut}
+      />
 
-      {page === 'home'    && <HomePage onNav={setPage} userId={user.id} entries={entries} upsertEntry={upsertEntry} removeEntry={removeEntry} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />}
+      {page === 'home' && (
+        <HomePage onNav={setPage} />
+      )}
 
-      {page === 'search'  && (
+      {page === 'search' && (
         <SearchPage userId={user.id} entries={entries} upsertEntry={upsertEntry} removeEntry={removeEntry} {...favProps} />
       )}
 
-      {page === 'mylist'  && (
+      {page === 'mylist' && (
         <MyListPage userId={user.id} entries={entries} upsertEntry={upsertEntry} removeEntry={removeEntry} {...favProps} />
       )}
 
-      {page === 'people'  && (
+      {page === 'people' && (
         <PeoplePage currentUserId={user.id} onViewProfile={u => handleViewProfile(u, 'people')} />
       )}
 
@@ -100,11 +109,19 @@ export default function App() {
           targetUser={viewingUser} currentUserId={user.id}
           onBack={() => setPage(prevPage)}
           onViewProfile={u => handleViewProfile(u, 'public-profile')}
-          currentUserEntries={entries}
-          upsertEntry={upsertEntry}
-          removeEntry={removeEntry}
+          currentUserFavProps={favProps}
         />
       )}
+
+      {page === 'about' && <AboutPage />}
+      
+      {page === 'public-profile' && viewingUser && (
+  <PublicProfilePage
+    
+    isFavorite={isFavorite}
+    toggleFavorite={toggleFavorite}
+  />
+)}
     </>
   )
 }
