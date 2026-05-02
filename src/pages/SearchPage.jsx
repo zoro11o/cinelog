@@ -12,6 +12,7 @@ import AddToListModal from '../components/modals/AddToListModal'
 import MiniCard       from '../components/ui/MiniCard'
 import HeartButton    from '../components/ui/HeartButton'
 
+
 const SORT_OPTIONS = [
   { value: 'trending',              label: '🔥 Trending' },
   { value: 'popularity.desc',       label: '📈 Most Popular' },

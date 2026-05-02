@@ -53,10 +53,10 @@ export default function App() {
   async function handleSignOut() { await signOut(); setPage('home') }
 
   function handleViewProfile(targetUser, from = 'people') {
-    setViewingUser(targetUser)
-    setPrevPage(from)
-    setPage('public-profile')
-  }
+  setViewingUser(targetUser)
+  setPrevPage(from)
+  setPage('public-profile')
+}
 
   const favProps = { favorites, toggleFavorite, isFavorite, reorderFavorites }
 
@@ -71,9 +71,16 @@ export default function App() {
       />
 
       {page === 'home' && (
-        <HomePage onNav={setPage} />
-      )}
-
+  <HomePage
+    onNav={setPage}
+    userId={user.id}
+    entries={entries}
+    upsertEntry={upsertEntry}
+    removeEntry={removeEntry}
+    isFavorite={isFavorite}
+    toggleFavorite={toggleFavorite}
+  />
+)}
       {page === 'search' && (
         <SearchPage userId={user.id} entries={entries} upsertEntry={upsertEntry} removeEntry={removeEntry} {...favProps} />
       )}
@@ -83,8 +90,8 @@ export default function App() {
       )}
 
       {page === 'people' && (
-        <PeoplePage currentUserId={user.id} onViewProfile={u => handleViewProfile(u, 'people')} />
-      )}
+  <PeoplePage currentUserId={user.id} onViewProfile={u => handleViewProfile(u, 'people')} />
+)}
 
       {page === 'profile' && (
         <ProfilePage

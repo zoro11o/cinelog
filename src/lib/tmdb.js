@@ -7,6 +7,10 @@ export const TMDB_IMAGE_LARGE = 'https://image.tmdb.org/t/p/w500'
 
 let directWorks = null
 
+// ── In-memory cache (5 min TTL) ────────────────────────────
+const cache    = new Map()
+const CACHE_TTL = 5 * 60 * 1000
+
 async function fetchWithTimeout(url, ms = 5000) {
   const controller = new AbortController()
   const timeout    = setTimeout(() => controller.abort(), ms)
@@ -48,6 +52,18 @@ async function tmdb(path, params = {}) {
   throw new Error('Set VITE_TMDB_API_KEY or VITE_PROXY_URL in .env')
 }
 
+// Cached version — use for detail endpoints, not search/discover
+async function tmdbCached(path, params = {}) {
+  const key = path + JSON.stringify(params)
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.data
+  const data = await tmdb(path, params)
+  cache.set(key, { data, ts: Date.now() })
+  return data
+}
+
+// ── Search & Discover (always fresh, no cache) ──────────────
+
 export async function searchMulti(query, filters = {}, page = 1) {
   if (!query.trim()) return { results: [], totalPages: 0 }
 
@@ -73,7 +89,6 @@ export async function searchMulti(query, filters = {}, page = 1) {
   return { results: combined, totalPages }
 }
 
-// Search for people (cast, directors, crew)
 export async function searchPerson(query, page = 1) {
   if (!query.trim()) return { results: [], totalPages: 0 }
   const data = await tmdb('/search/person', { query, include_adult: false, page })
@@ -93,7 +108,6 @@ export async function discoverTV(filters = {}, page = 1) {
   return { results: (data.results || []).map(r => ({ ...r, media_type: 'tv' })), totalPages: data.total_pages || 1 }
 }
 
-// Trending titles — timeWindow: 'day' | 'week'
 export async function getTrending(type = 'all', timeWindow = 'week', page = 1) {
   const data = await tmdb(`/trending/${type}/${timeWindow}`, { page })
   const results = (data.results || []).map(r => ({
@@ -104,26 +118,27 @@ export async function getTrending(type = 'all', timeWindow = 'week', page = 1) {
 }
 
 export async function getMovieGenres() {
-  const data = await tmdb('/genre/movie/list')
-  return data.genres || []
+  return (await tmdbCached('/genre/movie/list')).genres || []
 }
 
 export async function getTVGenres() {
-  const data = await tmdb('/genre/tv/list')
-  return data.genres || []
+  return (await tmdbCached('/genre/tv/list')).genres || []
 }
 
+// ── Detail endpoints (all cached) ──────────────────────────
+
 export async function getDetails(id, type) {
-  const data = await tmdb(`/${type}/${id}`)
+  const data = await tmdbCached(`/${type}/${id}`)
   if (type === 'tv' && data) {
     const lastSeason = data.last_episode_to_air?.season_number
-    if (lastSeason && lastSeason > 0) {
+    if (lastSeason && lastSeason > 0 && !data._accurate_runtime) {
       try {
-        const season = await tmdb(`/tv/${id}/season/${lastSeason}`)
+        const season   = await tmdbCached(`/tv/${id}/season/${lastSeason}`)
         const episodes = (season.episodes || []).filter(e => e.runtime > 0)
         if (episodes.length > 0) {
-          const avgRuntime = Math.round(episodes.reduce((s, e) => s + e.runtime, 0) / episodes.length)
-          data._accurate_runtime = avgRuntime
+          data._accurate_runtime = Math.round(
+            episodes.reduce((s, e) => s + e.runtime, 0) / episodes.length
+          )
         }
       } catch {}
     }
@@ -132,20 +147,20 @@ export async function getDetails(id, type) {
 }
 
 export async function getCredits(id, type) {
-  return tmdb(`/${type}/${id}/credits`)
+  return tmdbCached(`/${type}/${id}/credits`)
 }
 
 export async function getSeasons(showId) {
-  const show = await tmdb(`/tv/${showId}`)
+  const show = await tmdbCached(`/tv/${showId}`)
   return (show.seasons || []).filter(s => s.season_number > 0)
 }
 
 export async function getRelated(id, type) {
   if (type === 'movie') {
     try {
-      const details = await tmdb(`/movie/${id}`)
+      const details = await tmdbCached(`/movie/${id}`)
       if (details?.belongs_to_collection?.id) {
-        const collection = await tmdb(`/collection/${details.belongs_to_collection.id}`)
+        const collection = await tmdbCached(`/collection/${details.belongs_to_collection.id}`)
         const parts = (collection.parts || [])
           .filter(p => Number(p.id) !== Number(id))
           .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''))
@@ -163,7 +178,7 @@ export async function getRelated(id, type) {
 
 export async function getCollection(collectionId) {
   try {
-    const data = await tmdb(`/collection/${collectionId}`)
+    const data = await tmdbCached(`/collection/${collectionId}`)
     return {
       name:    data.name || '',
       parts:   (data.parts || [])
@@ -185,8 +200,8 @@ function sortByDate(arr) {
 
 export async function getPersonCredits(personId) {
   const [person, credits] = await Promise.all([
-    tmdb(`/person/${personId}`),
-    tmdb(`/person/${personId}/combined_credits`),
+    tmdbCached(`/person/${personId}`),
+    tmdbCached(`/person/${personId}/combined_credits`),
   ])
 
   const primaryDept = person?.known_for_department || 'Acting'
@@ -229,8 +244,8 @@ export async function getPersonCredits(personId) {
 
 export async function getMedia(id, type) {
   const [imagesData, videosData] = await Promise.all([
-    tmdb(`/${type}/${id}/images`),
-    tmdb(`/${type}/${id}/videos`),
+    tmdbCached(`/${type}/${id}/images`),
+    tmdbCached(`/${type}/${id}/videos`),
   ])
 
   const backdrops = (imagesData?.backdrops || [])

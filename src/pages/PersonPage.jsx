@@ -43,7 +43,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
   const knownFor    = data?.knownFor || []
   const primaryDept = data?.primaryDept || 'Acting'
 
-  const deptKeys = Object.keys(departments)
+  const deptKeys    = Object.keys(departments)
   const orderedTabs = [
     primaryDept,
     ...DEPT_ORDER.filter(d => d !== primaryDept),
@@ -52,9 +52,25 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
 
   const displayCredits = departments[activeTab] || []
   const isActingTab    = activeTab === 'Acting'
+  const isPersonFav    = isFavorite?.(personId, 'person') || false
 
   function getExisting(item) {
-    return entries?.find(e => String(e.tmdb_id) === String(item.id) && e.media_type === item.media_type)
+    // item.id is TMDB numeric id from credits, item.tmdb_id may also exist
+    const id = item.tmdb_id || item.id
+    return entries?.find(e => String(e.tmdb_id) === String(id) && e.media_type === item.media_type)
+  }
+
+  function handleTogglePersonFav() {
+    if (!toggleFavorite) return
+    toggleFavorite({
+      id:           personId,
+      tmdb_id:      personId,
+      media_type:   'person',
+      name:         person?.name,
+      title:        person?.name,
+      profile_path: person?.profile_path || '',
+      poster_path:  person?.profile_path || '',
+    })
   }
 
   return (
@@ -65,13 +81,21 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
 
       {/* ── Person header ── */}
       <div style={{ display: 'flex', gap: 24, marginBottom: 32, alignItems: 'flex-start' }}>
-        {person?.profile_path
-          ? <img src={`https://image.tmdb.org/t/p/w185${person.profile_path}`} alt={person.name}
-              style={{ width: 120, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
-          : <div style={{ width: 120, height: 160, borderRadius: 12, background: '#21262d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: '#6e7681' }}>
-              {person?.name?.[0]}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          {person?.profile_path
+            ? <img src={`https://image.tmdb.org/t/p/w185${person.profile_path}`} alt={person.name}
+                style={{ width: 120, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
+            : <div style={{ width: 120, height: 160, borderRadius: 12, background: '#21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: '#6e7681' }}>
+                {person?.name?.[0]}
+              </div>
+          }
+          {toggleFavorite && (
+            <div style={{ position: 'absolute', top: 6, right: 6 }}>
+              <HeartButton isFav={isPersonFav} onToggle={handleTogglePersonFav} size={26} />
             </div>
-        }
+          )}
+        </div>
+
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 32, color: '#e6edf3', marginBottom: 10 }}>{person?.name}</h1>
           {person?.known_for_department && (
@@ -96,7 +120,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
         </div>
       </div>
 
-      {/* ── Known For strip ── */}
+      {/* ── Known For strip — with status badge + score ── */}
       {knownFor.length > 0 && (
         <div style={{ marginBottom: 32 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: '#6e7681', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>
@@ -104,21 +128,55 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
           </h2>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
             {knownFor.map(item => {
-              const title = item.title || item.name
-              const yr    = (item.release_date || item.first_air_date || '').slice(0, 4)
+              const title    = item.title || item.name
+              const yr       = (item.release_date || item.first_air_date || '').slice(0, 4)
+              const existing = getExisting(item)
+              const isFav    = isFavorite?.(item.id, item.media_type)
               return (
                 <div key={`kf-${item.media_type}-${item.id}`}
                   onClick={() => setSelected(item)}
-                  style={{ flexShrink: 0, width: 90, cursor: 'pointer', transition: 'opacity 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  style={{ flexShrink: 0, width: 100, cursor: 'pointer', position: 'relative' }}
                 >
-                  {item.poster_path
-                    ? <img src={`${TMDB_IMAGE_BASE}${item.poster_path}`} alt={title}
-                        style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', borderRadius: 8, display: 'block', marginBottom: 6 }} />
-                    : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', borderRadius: 8, marginBottom: 6 }} />
-                  }
-                  <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3 }}>
+                  <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', transition: 'opacity 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    {item.poster_path
+                      ? <img src={`${TMDB_IMAGE_BASE}${item.poster_path}`} alt={title}
+                          style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
+                      : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#6e7681', padding: 4, textAlign: 'center' }}>{title}</div>
+                    }
+
+                    {/* Status badge */}
+                    {existing && (
+                      <div style={{ position: 'absolute', top: 5, left: 5, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                        {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
+                      </div>
+                    )}
+
+                    {/* TMDB rating */}
+                    {item.vote_average > 0 && (
+                      <div style={{ position: 'absolute', top: existing ? 26 : 5, left: 5, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 600, color: '#f59e0b' }}>
+                        ★ {item.vote_average.toFixed(1)}
+                      </div>
+                    )}
+
+                    {/* User score if in list */}
+                    {existing?.score && (
+                      <div style={{ position: 'absolute', bottom: 5, left: 5, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 600, color: '#c9a84c' }}>
+                        ★ {existing.score}/10
+                      </div>
+                    )}
+
+                    {/* Heart */}
+                    {toggleFavorite && (
+                      <div style={{ position: 'absolute', top: 4, right: 4 }} onClick={e => { e.stopPropagation(); toggleFavorite({ ...item }) }}>
+                        <HeartButton isFav={isFav} onToggle={() => {}} size={22} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3, marginTop: 5 }}>
                     {title?.length > 18 ? title.slice(0, 16) + '…' : title}
                   </div>
                   <div style={{ fontSize: 10, color: '#6e7681', marginTop: 2 }}>{yr}</div>
@@ -147,7 +205,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
 
       {/* ── Credits grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 16 }}>
-        {displayCredits.map(item => {
+        {displayCredits.map((item, idx) => {
           const existing  = getExisting(item)
           const title     = item.title || item.name
           const yr        = (item.release_date || item.first_air_date || '').slice(0, 4)
@@ -156,7 +214,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
           const roleLabel = isActingTab ? (item.character || null) : (item.job || activeTab)
 
           return (
-            <div key={`${activeTab}-${item.media_type}-${item.id}`}
+            <div key={`${activeTab}-${item.media_type}-${item.id}-${item.character || item.job || idx}`}
               style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 10, overflow: 'hidden', position: 'relative', transition: 'transform 0.15s, border-color 0.15s', cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = '#22c55e55' }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = '#21262d' }}
@@ -168,18 +226,21 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
                 : <div style={{ width: '100%', aspectRatio: '2/3', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#30363d', fontSize: 11, padding: 8, textAlign: 'center' }}>{title}</div>
               }
 
+              {/* Status badge */}
               {existing && (
                 <div style={{ position: 'absolute', top: 6, left: 6, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>
                   {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
                 </div>
               )}
 
+              {/* TMDB rating */}
               {item.vote_average > 0 && (
                 <div style={{ position: 'absolute', top: existing ? 28 : 6, left: 6, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 600, color: '#f59e0b' }}>
                   ★ {item.vote_average.toFixed(1)}
                 </div>
               )}
 
+              {/* Heart */}
               {toggleFavorite && (
                 <div style={{ position: 'absolute', top: 6, right: 6 }} onClick={e => e.stopPropagation()}>
                   <HeartButton isFav={isFav} onToggle={() => toggleFavorite({ ...item })} size={24} />
@@ -217,11 +278,14 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
 
       {selected && (
         <AddToListModal
-          item={selected} userId={userId}
+          item={{ ...selected, id: selected.tmdb_id || selected.id }}
+          userId={userId}
           existingEntry={getExisting(selected)}
           onClose={() => setSelected(null)}
           onSave={async payload => { await upsertEntry?.(payload); setSelected(null) }}
           onRemove={async id => { await removeEntry?.(id); setSelected(null) }}
+          isFavorite={isFavorite}
+          toggleFavorite={toggleFavorite}
         />
       )}
     </div>
