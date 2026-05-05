@@ -8,7 +8,7 @@ export const TMDB_IMAGE_LARGE = 'https://image.tmdb.org/t/p/w500'
 let directWorks = null
 
 // ── In-memory cache (5 min TTL) ────────────────────────────
-const cache    = new Map()
+const cache     = new Map()
 const CACHE_TTL = 5 * 60 * 1000
 
 async function fetchWithTimeout(url, ms = 5000) {
@@ -52,7 +52,6 @@ async function tmdb(path, params = {}) {
   throw new Error('Set VITE_TMDB_API_KEY or VITE_PROXY_URL in .env')
 }
 
-// Cached version — use for detail endpoints, not search/discover
 async function tmdbCached(path, params = {}) {
   const key = path + JSON.stringify(params)
   const hit = cache.get(key)
@@ -62,30 +61,26 @@ async function tmdbCached(path, params = {}) {
   return data
 }
 
-// ── Search & Discover (always fresh, no cache) ──────────────
+// ── Search & Discover (always fresh) ───────────────────────
 
 export async function searchMulti(query, filters = {}, page = 1) {
   if (!query.trim()) return { results: [], totalPages: 0 }
-
   const [movieRes, tvRes] = await Promise.allSettled([
     tmdb('/search/movie', { query, include_adult: false, page, ...filters }),
     tmdb('/search/tv',    { query, include_adult: false, page, ...filters }),
   ])
-
   const movies     = (movieRes.status === 'fulfilled' ? movieRes.value.results || [] : []).map(r => ({ ...r, media_type: 'movie' }))
   const tv         = (tvRes.status    === 'fulfilled' ? tvRes.value.results    || [] : []).map(r => ({ ...r, media_type: 'tv' }))
   const totalPages = Math.max(
     movieRes.status === 'fulfilled' ? movieRes.value.total_pages || 1 : 1,
     tvRes.status    === 'fulfilled' ? tvRes.value.total_pages    || 1 : 1,
   )
-
   const combined = []
   const max = Math.max(movies.length, tv.length)
   for (let i = 0; i < max; i++) {
     if (movies[i]) combined.push(movies[i])
     if (tv[i])     combined.push(tv[i])
   }
-
   return { results: combined, totalPages }
 }
 
@@ -198,6 +193,20 @@ function sortByDate(arr) {
   })
 }
 
+// Keywords that indicate a self-appearance / interview / talk show
+const SELF_KEYWORDS = [
+  'himself', 'herself', 'themselves', ' self', '(self)',
+  'archive footage', 'archive', 'interview',
+  'presenter', 'host', 'narrator', 'moderator',
+  'himself -', 'herself -',
+]
+
+function isSelfAppearance(credit) {
+  const ch = (credit.character || '').toLowerCase().trim()
+  if (!ch) return false
+  return SELF_KEYWORDS.some(k => ch.includes(k))
+}
+
 export async function getPersonCredits(personId) {
   const [person, credits] = await Promise.all([
     tmdbCached(`/person/${personId}`),
@@ -206,10 +215,22 @@ export async function getPersonCredits(personId) {
 
   const primaryDept = person?.known_for_department || 'Acting'
 
-  const castCredits = sortByDate(
-    (credits?.cast || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv')
-  )
+  // ── Cast credits — split real acting vs self-appearances ──
+  const allCast = (credits?.cast || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv')
 
+  // Deduplicate by id+media_type (same show can appear multiple times for different seasons)
+  const seenCast = new Set()
+  const dedupedCast = allCast.filter(r => {
+    const k = `${r.id}-${r.media_type}`
+    if (seenCast.has(k)) return false
+    seenCast.add(k)
+    return true
+  })
+
+  const actingCredits     = sortByDate(dedupedCast.filter(r => !isSelfAppearance(r)))
+  const appearanceCredits = sortByDate(dedupedCast.filter(r => isSelfAppearance(r)))
+
+  // ── Crew credits grouped by department ────────────────────
   const crewByDept = {}
   for (const r of (credits?.crew || [])) {
     if (r.media_type !== 'movie' && r.media_type !== 'tv') continue
@@ -223,19 +244,27 @@ export async function getPersonCredits(personId) {
     crewByDept[dept] = sortByDate(crewByDept[dept])
   }
 
+  // ── Build departments map ──────────────────────────────────
   const departments = {}
-  if (castCredits.length) departments['Acting'] = castCredits
+  if (actingCredits.length)     departments['Acting']      = actingCredits
+  if (appearanceCredits.length) departments['Appearances'] = appearanceCredits
   for (const [dept, items] of Object.entries(crewByDept)) {
     if (items.length) departments[dept] = items
   }
 
+  // ── Known For — only real acting/directing work, no self appearances ──
   const seen = new Set()
   const knownFor = [
     ...(crewByDept[primaryDept] || []),
-    ...castCredits,
+    ...actingCredits,              // real acting only
     ...Object.values(crewByDept).flat(),
   ]
-    .filter(r => { const k = `${r.id}-${r.media_type}`; if (seen.has(k)) return false; seen.add(k); return true })
+    .filter(r => {
+      const k = `${r.id}-${r.media_type}`
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
     .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
     .slice(0, 8)
 

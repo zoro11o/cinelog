@@ -8,6 +8,20 @@ import HeartButton from '../components/ui/HeartButton'
 
 const DEPT_ORDER = ['Directing', 'Acting', 'Writing', 'Production', 'Creator', 'Camera', 'Visual Effects', 'Crew']
 
+// Keywords that indicate a self-appearance / interview / promo
+const SELF_KEYWORDS = [
+  'himself', 'herself', 'themselves', ' self', '(self)',
+  'host', 'archive footage', 'interview', 'special appearance',
+  'presenter', 'moderator', 'panelist', 'narrator',
+  'himself -', 'herself -',
+]
+
+function isSelfAppearance(item) {
+  const ch = (item.character || '').toLowerCase().trim()
+  if (!ch) return false
+  return SELF_KEYWORDS.some(k => ch.includes(k))
+}
+
 export default function PersonPage({ personId, onBack, userId, entries, upsertEntry, removeEntry, isFavorite, toggleFavorite }) {
   const [data,             setData]             = useState(null)
   const [loading,          setLoading]          = useState(true)
@@ -43,19 +57,43 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
   const knownFor    = data?.knownFor || []
   const primaryDept = data?.primaryDept || 'Acting'
 
-  const deptKeys    = Object.keys(departments)
+  // ── For the Acting tab: split into real roles vs self-appearances ──
+  const rawActing       = departments['Acting'] || []
+  const realActing      = rawActing.filter(r => !isSelfAppearance(r))
+  const selfAppearances = rawActing.filter(r => isSelfAppearance(r))
+
+  // Rebuild departments with filtered Acting + new Appearances tab
+  const filteredDepts = {
+    ...departments,
+    ...(realActing.length      ? { 'Acting':      realActing }      : {}),
+    ...(selfAppearances.length ? { 'Appearances': selfAppearances } : {}),
+  }
+  // Remove Acting if empty after filtering
+  if (realActing.length === 0) delete filteredDepts['Acting']
+
+  const deptKeys    = Object.keys(filteredDepts)
   const orderedTabs = [
     primaryDept,
     ...DEPT_ORDER.filter(d => d !== primaryDept),
-    ...deptKeys.filter(d => !DEPT_ORDER.includes(d) && d !== primaryDept),
-  ].filter(d => departments[d]?.length > 0)
+    'Appearances',
+    ...deptKeys.filter(d => !DEPT_ORDER.includes(d) && d !== primaryDept && d !== 'Appearances'),
+  ].filter(d => filteredDepts[d]?.length > 0)
 
-  const displayCredits = departments[activeTab] || []
-  const isActingTab    = activeTab === 'Acting'
-  const isPersonFav    = isFavorite?.(personId, 'person') || false
+  // Deduplicate credits by id+mediaType (fixes duplicate Oscar-type entries)
+  const rawCredits   = filteredDepts[activeTab] || []
+  const seen         = new Set()
+  const displayCredits = rawCredits.filter(item => {
+    const key = `${item.id}-${item.media_type}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  const isActingTab     = activeTab === 'Acting'
+  const isAppearanceTab = activeTab === 'Appearances'
+  const isPersonFav     = isFavorite?.(personId, 'person') || false
 
   function getExisting(item) {
-    // item.id is TMDB numeric id from credits, item.tmdb_id may also exist
     const id = item.tmdb_id || item.id
     return entries?.find(e => String(e.tmdb_id) === String(id) && e.media_type === item.media_type)
   }
@@ -115,19 +153,19 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
             </p>
           )}
           <p style={{ fontSize: 13, color: '#6e7681' }}>
-            {deptKeys.reduce((sum, d) => sum + (departments[d]?.length || 0), 0)} total credits
+            {deptKeys.reduce((sum, d) => sum + (filteredDepts[d]?.length || 0), 0)} total credits
           </p>
         </div>
       </div>
 
-      {/* ── Known For strip — with status badge + score ── */}
+      {/* ── Known For strip ── */}
       {knownFor.length > 0 && (
         <div style={{ marginBottom: 32 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: '#6e7681', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>
             Known For
           </h2>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
-            {knownFor.map(item => {
+            {knownFor.filter(item => !isSelfAppearance(item)).map(item => {
               const title    = item.title || item.name
               const yr       = (item.release_date || item.first_air_date || '').slice(0, 4)
               const existing = getExisting(item)
@@ -146,36 +184,27 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
                           style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
                       : <div style={{ width: '100%', aspectRatio: '2/3', background: '#21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#6e7681', padding: 4, textAlign: 'center' }}>{title}</div>
                     }
-
-                    {/* Status badge */}
                     {existing && (
                       <div style={{ position: 'absolute', top: 5, left: 5, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>
                         {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
                       </div>
                     )}
-
-                    {/* TMDB rating */}
                     {item.vote_average > 0 && (
                       <div style={{ position: 'absolute', top: existing ? 26 : 5, left: 5, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 600, color: '#f59e0b' }}>
                         ★ {item.vote_average.toFixed(1)}
                       </div>
                     )}
-
-                    {/* User score if in list */}
                     {existing?.score && (
                       <div style={{ position: 'absolute', bottom: 5, left: 5, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 600, color: '#c9a84c' }}>
-                        ★ {existing.score}/10
+                        {existing.score}/10
                       </div>
                     )}
-
-                    {/* Heart */}
                     {toggleFavorite && (
                       <div style={{ position: 'absolute', top: 4, right: 4 }} onClick={e => { e.stopPropagation(); toggleFavorite({ ...item }) }}>
                         <HeartButton isFav={isFav} onToggle={() => {}} size={22} />
                       </div>
                     )}
                   </div>
-
                   <div style={{ fontSize: 11, color: '#e6edf3', lineHeight: 1.3, marginTop: 5 }}>
                     {title?.length > 18 ? title.slice(0, 16) + '…' : title}
                   </div>
@@ -192,13 +221,15 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
         {orderedTabs.map(dept => (
           <button key={dept} onClick={() => setActiveTab(dept)} style={{
             padding: '10px 18px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
-            color: activeTab === dept ? '#22c55e' : '#6e7681',
+            color: activeTab === dept ? '#22c55e' : dept === 'Appearances' ? '#6e7681' : '#6e7681',
             borderBottom: activeTab === dept ? '2px solid #22c55e' : '2px solid transparent',
             background: 'transparent', border: 'none',
             cursor: 'pointer', marginBottom: -1,
+            // Dim the Appearances tab slightly so it doesn't look as prominent
+            opacity: dept === 'Appearances' ? 0.65 : 1,
           }}>
             {dept}
-            <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.6 }}>({departments[dept]?.length || 0})</span>
+            <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.6 }}>({filteredDepts[dept]?.length || 0})</span>
           </button>
         ))}
       </div>
@@ -211,10 +242,12 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
           const yr        = (item.release_date || item.first_air_date || '').slice(0, 4)
           const isFav     = isFavorite?.(item.id, item.media_type)
           const community = communityRatings[String(item.id)]
-          const roleLabel = isActingTab ? (item.character || null) : (item.job || activeTab)
+          const roleLabel = (isActingTab || isAppearanceTab)
+            ? (item.character || null)
+            : (item.job || activeTab)
 
           return (
-            <div key={`${activeTab}-${item.media_type}-${item.id}-${item.character || item.job || idx}`}
+            <div key={`${activeTab}-${item.media_type}-${item.id}-${idx}`}
               style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 10, overflow: 'hidden', position: 'relative', transition: 'transform 0.15s, border-color 0.15s', cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = '#22c55e55' }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = '#21262d' }}
@@ -226,21 +259,16 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
                 : <div style={{ width: '100%', aspectRatio: '2/3', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#30363d', fontSize: 11, padding: 8, textAlign: 'center' }}>{title}</div>
               }
 
-              {/* Status badge */}
               {existing && (
                 <div style={{ position: 'absolute', top: 6, left: 6, background: STATUS_COLORS[existing.status], borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>
                   {STATUS_LABELS[existing.status].split(' ')[0].toUpperCase()}
                 </div>
               )}
-
-              {/* TMDB rating */}
               {item.vote_average > 0 && (
                 <div style={{ position: 'absolute', top: existing ? 28 : 6, left: 6, background: 'rgba(0,0,0,0.8)', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 600, color: '#f59e0b' }}>
                   ★ {item.vote_average.toFixed(1)}
                 </div>
               )}
-
-              {/* Heart */}
               {toggleFavorite && (
                 <div style={{ position: 'absolute', top: 6, right: 6 }} onClick={e => e.stopPropagation()}>
                   <HeartButton isFav={isFav} onToggle={() => toggleFavorite({ ...item })} size={24} />
@@ -267,7 +295,7 @@ export default function PersonPage({ personId, onBack, userId, entries, upsertEn
                 </div>
                 {roleLabel && (
                   <div style={{ fontSize: 11, color: '#6e7681', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {isActingTab ? `as ${roleLabel}` : roleLabel}
+                    {(isActingTab || isAppearanceTab) ? `as ${roleLabel}` : roleLabel}
                   </div>
                 )}
               </div>

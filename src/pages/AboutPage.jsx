@@ -3,8 +3,8 @@
 // To add your profile picture, set PROFILE_IMAGE to the path.
 // Leave as null to use the default fallback.
 
-const LOGO_IMAGE    = null  // e.g. '/logo.png' — put file in /public folder
-const PROFILE_IMAGE = null  // e.g. '/me.jpg'   — put file in /public folder
+const LOGO_IMAGE    = '/watchvault.gif' // e.g. '/logo.png' — put file in /public folder
+const PROFILE_IMAGE = '/me.jpg' // e.g. '/me.jpg'   — put file in /public folder
 const YOUR_NAME     = '𝙕𝙤𝙧𝙤'
 const YOUR_BIO      = '· Probably watching something right now'
 
@@ -16,11 +16,17 @@ export default function AboutPage() {
       href: '/profile', // opens profile page — handled below via onNav
       isInternal: true,
       icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
+         <img 
+    src="https://files.catbox.moe/ay6z9p.gif" 
+    alt="icon" 
+    width="18" 
+    height="18" 
+  />
+      //  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      //    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+       //   <path d="M2 17l10 5 10-5"/>
+        //  <path d="M2 12l10 5 10-5"/>
+       // </svg>
       ),
       color: '#c9a84c',
     },
